@@ -49,7 +49,7 @@ void Downloader::download(const std::string& url,
 
 int main(int argc, char** argv) {
   if (argc < 3) {
-    fmt::print("v\033[32m{}\033[0m, here is how to use this tool : \033[32m{}\033[0m url outfilename",
+    fmt::print("Version: \033[32m{}\033[0m, here is how to use this tool : \033[32m{}\033[0m url outfilename",
                Project::VERSION_STRING, Project::PROJECT_NAME);
     return 0;
   };
