@@ -19,3 +19,41 @@ jobs:
           pip install cppsage
           sage doctor
           sage compile
+            # Zip and upload Windows build
+      - name: Zip Windows build artifact
+        if: matrix.os == 'windows-latest'
+        run: powershell -Command "Compress-Archive -Path build/fetch/fetch.exe -DestinationPath fetch-windows.zip"
+
+      - name: Upload Windows Release Asset
+        if: matrix.os == 'windows-latest'
+        uses: softprops/action-gh-release@v2
+        with:
+          files: fetch-windows.zip
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      # Zip and upload Linux build
+      - name: Zip Linux build artifact
+        if: matrix.os == 'ubuntu-latest'
+        run: zip -j fetch-linux.zip build/fetch/fetch
+
+      - name: Upload Linux Release Asset
+        if: matrix.os == 'ubuntu-latest'
+        uses: softprops/action-gh-release@v2
+        with:
+          files: fetch-linux.zip
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      # Zip and upload Mac build
+      - name: Zip Mac build artifact
+        if: matrix.os == 'macos-latest'
+        run: zip -j fetch-macos.zip build/fetch/fetch
+
+      - name: Upload Mac Release Asset
+        if: matrix.os == 'macos-latest'
+        uses: softprops/action-gh-release@v2
+        with:
+          files: fetch-macos.zip
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
