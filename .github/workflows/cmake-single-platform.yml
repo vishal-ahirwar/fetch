@@ -20,6 +20,27 @@ jobs:
           sage doctor
           sage compile
             # Zip and upload Windows build
+      
+      - name: Get latest tag
+        id: get_tag
+        run: |
+          git fetch --tags
+          latest_tag=$(git describe --tags `git rev-list --tags --max-count=1`)
+          echo "latest_tag=$latest_tag" >> $GITHUB_OUTPUT
+
+      - name: Bump tag and push
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          latest_tag=${{ steps.get_tag.outputs.latest_tag }}
+          if [[ -z "$latest_tag" ]]; then
+            new_tag="v1.0.0"
+          else
+            new_tag=$(echo $latest_tag | awk -F. -v OFS=. '{$NF += 1 ; print}')
+          fi
+          git tag $new_tag
+          git push origin $new_tag
+        
       - name: Zip Windows build artifact
         if: matrix.os == 'windows-latest'
         run: powershell -Command "Compress-Archive -Path build/fetch/fetch.exe -DestinationPath fetch-windows.zip"
