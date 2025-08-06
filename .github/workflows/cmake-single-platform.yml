@@ -1,7 +1,8 @@
 name: fetch CI/CD
+
 permissions:
   contents: write
-  
+
 on:
   push:
     branches: [ "master" ]
@@ -16,116 +17,141 @@ jobs:
         os: [ubuntu-latest, windows-latest, macos-latest]
     outputs:
       new_tag: ${{ steps.bump_tag.outputs.new_tag }}
-
+    
     steps:
-      - uses: actions/checkout@v4
-
-      - name: Set up Python
-        uses: actions/setup-python@v5
-        with:
-          python-version: '3.12'
-
-      - name: Cache pip
-        uses: actions/cache@v4
-        with:
-          path: ~/.cache/pip
-          key: ${{ runner.os }}-pip-${{ hashFiles('**/requirements.txt') }}
-          restore-keys: |
-            ${{ runner.os }}-pip-
-
-      - name: Install cppsage and build using Sage
-        run: |
-          pip install cppsage
-          sage doctor
-          sage compile
-
-      - name: Make binary executable (Linux/macOS)
-        if: matrix.os != 'windows-latest'
-        run: chmod +x build/fetch/fetch
-
-      - name: Get latest tag
-        id: get_tag
-        shell: bash
-        run: |
-          git fetch --tags
-          latest_tag=$(git describe --tags "$(git rev-list --tags --max-count=1)" 2>/dev/null || echo "")
-          echo "latest_tag=$latest_tag" >> $GITHUB_OUTPUT
-
-      - name: Bump tag and push
-        id: bump_tag
-        shell: bash
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: |
-          latest_tag="${{ steps.get_tag.outputs.latest_tag }}"
-          if [[ -z "$latest_tag" ]]; then
-            new_tag="v1.0.0"
-          else
-            version=$(echo "$latest_tag" | sed 's/^v//')
-            IFS='.' read -r major minor patch <<< "$version"
+    - uses: actions/checkout@v4
+      with:
+        fetch-depth: 0  # Fetch all history for tags
+        
+    - name: Set up Python
+      uses: actions/setup-python@v5
+      with:
+        python-version: '3.12'
+        
+    - name: Cache pip
+      uses: actions/cache@v4
+      with:
+        path: ~/.cache/pip
+        key: ${{ runner.os }}-pip-${{ hashFiles('**/requirements.txt') }}
+        restore-keys: |
+          ${{ runner.os }}-pip-
+          
+    - name: Install cppsage and build using Sage
+      run: |
+        pip install cppsage
+        sage doctor
+        sage compile
+        
+    - name: Make binary executable (Linux/macOS)
+      if: matrix.os != 'windows-latest'
+      run: chmod +x build/fetch/fetch
+      
+    - name: Get latest tag
+      id: get_tag
+      shell: bash
+      run: |
+        git fetch --tags
+        # Get the latest tag by version, not by date
+        latest_tag=$(git tag -l --sort=-version:refname | head -n1 || echo "")
+        echo "latest_tag=$latest_tag" >> $GITHUB_OUTPUT
+        echo "Found latest tag: $latest_tag"
+        
+    - name: Bump tag and push
+      id: bump_tag
+      # Only create tags on master branch pushes, not on PRs
+      if: github.event_name == 'push' && github.ref == 'refs/heads/master' && matrix.os == 'ubuntu-latest'
+      shell: bash
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      run: |
+        latest_tag="${{ steps.get_tag.outputs.latest_tag }}"
+        
+        if [[ -z "$latest_tag" ]]; then
+          new_tag="v1.0.0"
+        else
+          version=$(echo "$latest_tag" | sed 's/^v//')
+          IFS='.' read -r major minor patch <<< "$version"
+          
+          # Keep incrementing until we find a non-existing tag
+          while true; do
             patch=$((patch + 1))
             new_tag="v$major.$minor.$patch"
-          fi
+            if ! git rev-parse "$new_tag" >/dev/null 2>&1; then
+              echo "Will create new tag: $new_tag"
+              break
+            fi
+            echo "Tag $new_tag already exists, trying next..."
+          done
+        fi
+        
+        git config user.name "github-actions"
+        git config user.email "github-actions@github.com"
+        
+        # Double-check the tag doesn't exist before creating
+        if git rev-parse "$new_tag" >/dev/null 2>&1; then
+          echo "Error: Tag $new_tag already exists!"
+          exit 1
+        fi
+        
+        git tag "$new_tag"
+        git push origin "$new_tag"
+        echo "new_tag=$new_tag" >> $GITHUB_OUTPUT
 
-          git config user.name "github-actions"
-          git config user.email "github-actions@github.com"
-          git tag "$new_tag"
-          git push origin "$new_tag"
+    # Zip and Upload for Windows
+    - name: Zip Windows build artifact
+      if: matrix.os == 'windows-latest'
+      run: powershell -Command "Compress-Archive -Path build/fetch/fetch.exe -DestinationPath fetch-windows.zip"
+      
+    - name: Upload Windows Artifact
+      if: matrix.os == 'windows-latest'
+      uses: actions/upload-artifact@v4
+      with:
+        name: fetch-windows
+        path: fetch-windows.zip
 
-          echo "new_tag=$new_tag" >> $GITHUB_OUTPUT
+    # Zip and Upload for Linux  
+    - name: Zip Linux build artifact
+      if: matrix.os == 'ubuntu-latest'
+      run: zip -j fetch-linux.zip build/fetch/fetch
+      
+    - name: Upload Linux Artifact
+      if: matrix.os == 'ubuntu-latest'
+      uses: actions/upload-artifact@v4
+      with:
+        name: fetch-linux
+        path: fetch-linux.zip
 
-      # Zip and Upload for Windows
-      - name: Zip Windows build artifact
-        if: matrix.os == 'windows-latest'
-        run: powershell -Command "Compress-Archive -Path build/fetch/fetch.exe -DestinationPath fetch-windows.zip"
-
-      - name: Upload Windows Artifact
-        if: matrix.os == 'windows-latest'
-        uses: actions/upload-artifact@v4
-        with:
-          name: fetch-windows
-          path: fetch-windows.zip
-
-      # Zip and Upload for Linux
-      - name: Zip Linux build artifact
-        if: matrix.os == 'ubuntu-latest'
-        run: zip -j fetch-linux.zip build/fetch/fetch
-
-      - name: Upload Linux Artifact
-        if: matrix.os == 'ubuntu-latest'
-        uses: actions/upload-artifact@v4
-        with:
-          name: fetch-linux
-          path: fetch-linux.zip
-
-      # Zip and Upload for macOS
-      - name: Zip Mac build artifact
-        if: matrix.os == 'macos-latest'
-        run: zip -j fetch-macos.zip build/fetch/fetch
-
-      - name: Upload Mac Artifact
-        if: matrix.os == 'macos-latest'
-        uses: actions/upload-artifact@v4
-        with:
-          name: fetch-macos
-          path: fetch-macos.zip
+    # Zip and Upload for macOS
+    - name: Zip Mac build artifact
+      if: matrix.os == 'macos-latest'
+      run: zip -j fetch-macos.zip build/fetch/fetch
+      
+    - name: Upload Mac Artifact  
+      if: matrix.os == 'macos-latest'
+      uses: actions/upload-artifact@v4
+      with:
+        name: fetch-macos
+        path: fetch-macos.zip
 
   release:
     needs: build
     runs-on: ubuntu-latest
+    # Only run release job on master pushes when a new tag was created
+    if: github.event_name == 'push' && github.ref == 'refs/heads/master' && needs.build.outputs.new_tag != ''
+    
     steps:
-      - uses: actions/checkout@v4
-
-      - name: Download all artifacts
-        uses: actions/download-artifact@v4
-
-      - name: Create GitHub Release
-        uses: softprops/action-gh-release@v2
-        with:
-          tag_name: ${{ needs.build.outputs.new_tag }}
-          files: |
-            fetch-windows/fetch-windows.zip
-            fetch-linux/fetch-linux.zip
-            fetch-macos/fetch-macos.zip
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+    - uses: actions/checkout@v4
+    
+    - name: Download all artifacts
+      uses: actions/download-artifact@v4
+      
+    - name: Create GitHub Release
+      uses: softprops/action-gh-release@v2
+      with:
+        tag_name: ${{ needs.build.outputs.new_tag }}
+        files: |
+          fetch-windows/fetch-windows.zip
+          fetch-linux/fetch-linux.zip
+          fetch-macos/fetch-macos.zip
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
