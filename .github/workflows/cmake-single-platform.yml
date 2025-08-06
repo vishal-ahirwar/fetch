@@ -34,8 +34,8 @@ jobs:
       - name: Install cppsage and build using Sage
         run: |
           pip install cppsage
-          python -m sage doctor
-          python -m sage compile
+          sage doctor
+          sage compile
 
       - name: Make binary executable (Linux/macOS)
         if: matrix.os != 'windows-latest'
