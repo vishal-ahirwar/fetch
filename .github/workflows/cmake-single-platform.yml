@@ -1,4 +1,5 @@
 name: fetch CI/CD
+
 on:
   push:
     branches: [ "master" ]
@@ -11,70 +12,118 @@ jobs:
     strategy:
       matrix:
         os: [ubuntu-latest, windows-latest, macos-latest]
+    outputs:
+      new_tag: ${{ steps.bump_tag.outputs.new_tag }}
+
     steps:
       - uses: actions/checkout@v4
-      
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Cache pip
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/pip
+          key: ${{ runner.os }}-pip-${{ hashFiles('**/requirements.txt') }}
+          restore-keys: |
+            ${{ runner.os }}-pip-
+
       - name: Install cppsage and build using Sage
         run: |
           pip install cppsage
-          sage doctor
-          sage compile
-            # Zip and upload Windows build
-      
+          python -m sage doctor
+          python -m sage compile
+
+      - name: Make binary executable (Linux/macOS)
+        if: matrix.os != 'windows-latest'
+        run: chmod +x build/fetch/fetch
+
       - name: Get latest tag
         id: get_tag
+        shell: bash
         run: |
           git fetch --tags
-          latest_tag=$(git describe --tags `git rev-list --tags --max-count=1`)
+          latest_tag=$(git describe --tags "$(git rev-list --tags --max-count=1)" 2>/dev/null || echo "")
           echo "latest_tag=$latest_tag" >> $GITHUB_OUTPUT
 
       - name: Bump tag and push
+        id: bump_tag
+        shell: bash
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          latest_tag=${{ steps.get_tag.outputs.latest_tag }}
+          latest_tag="${{ steps.get_tag.outputs.latest_tag }}"
           if [[ -z "$latest_tag" ]]; then
             new_tag="v1.0.0"
           else
-            new_tag=$(echo $latest_tag | awk -F. -v OFS=. '{$NF += 1 ; print}')
+            version=$(echo "$latest_tag" | sed 's/^v//')
+            IFS='.' read -r major minor patch <<< "$version"
+            patch=$((patch + 1))
+            new_tag="v$major.$minor.$patch"
           fi
-          git tag $new_tag
-          git push origin $new_tag
-        
+
+          git config user.name "github-actions"
+          git config user.email "github-actions@github.com"
+          git tag "$new_tag"
+          git push origin "$new_tag"
+
+          echo "new_tag=$new_tag" >> $GITHUB_OUTPUT
+
+      # Zip and Upload for Windows
       - name: Zip Windows build artifact
         if: matrix.os == 'windows-latest'
         run: powershell -Command "Compress-Archive -Path build/fetch/fetch.exe -DestinationPath fetch-windows.zip"
 
-      - name: Upload Windows Release Asset
+      - name: Upload Windows Artifact
         if: matrix.os == 'windows-latest'
-        uses: softprops/action-gh-release@v2
+        uses: actions/upload-artifact@v4
         with:
-          files: fetch-windows.zip
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          name: fetch-windows
+          path: fetch-windows.zip
 
-      # Zip and upload Linux build
+      # Zip and Upload for Linux
       - name: Zip Linux build artifact
         if: matrix.os == 'ubuntu-latest'
         run: zip -j fetch-linux.zip build/fetch/fetch
 
-      - name: Upload Linux Release Asset
+      - name: Upload Linux Artifact
         if: matrix.os == 'ubuntu-latest'
-        uses: softprops/action-gh-release@v2
+        uses: actions/upload-artifact@v4
         with:
-          files: fetch-linux.zip
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          name: fetch-linux
+          path: fetch-linux.zip
 
-      # Zip and upload Mac build
+      # Zip and Upload for macOS
       - name: Zip Mac build artifact
         if: matrix.os == 'macos-latest'
         run: zip -j fetch-macos.zip build/fetch/fetch
 
-      - name: Upload Mac Release Asset
+      - name: Upload Mac Artifact
         if: matrix.os == 'macos-latest'
+        uses: actions/upload-artifact@v4
+        with:
+          name: fetch-macos
+          path: fetch-macos.zip
+
+  release:
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+
+      - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
         with:
-          files: fetch-macos.zip
+          tag_name: ${{ needs.build.outputs.new_tag }}
+          files: |
+            fetch-windows/fetch-windows.zip
+            fetch-linux/fetch-linux.zip
+            fetch-macos/fetch-macos.zip
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
