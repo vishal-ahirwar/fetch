@@ -20,7 +20,7 @@ void Downloader::download(const std::string& url,
 #endif
   // Perform the HTTP GET request
   cpr::Response response = cpr::Get(
-      cpr::Url{url}, cpr::ReserveSize{1024 * 1024 * 8},
+      cpr::Url{url}, cpr::SslOptions(), cpr::ReserveSize{1024 * 1024 * 8},
       cpr::ProgressCallback(
           [&](cpr::cpr_off_t download_total, cpr::cpr_off_t download_now,
               cpr::cpr_off_t upload_total, cpr::cpr_off_t upload_now,
@@ -49,8 +49,10 @@ void Downloader::download(const std::string& url,
 
 int main(int argc, char** argv) {
   if (argc < 3) {
-    fmt::print("Made by \033[32m{}\033[0m Version: \033[32m{}\033[0m, here is how to use this tool : \033[32m{}\033[0m url outfilename",
-               Project::COMPANY_NAME,Project::VERSION_STRING, Project::PROJECT_NAME);
+    fmt::print(
+        "Made by \033[32m{}\033[0m Version: \033[32m{}\033[0m,\n"
+        "How to : \033[32m{}\033[0m url outfilename",
+        Project::COMPANY_NAME, Project::VERSION_STRING, Project::PROJECT_NAME);
     return 0;
   };
   Downloader::download(argv[1], argv[2]);
