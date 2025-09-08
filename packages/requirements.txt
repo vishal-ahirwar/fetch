@@ -1,6 +1,0 @@
-[requires]
-fmt/11.2.0
-cpr/1.12.0
-[generators]
-CMakeDeps
-CMakeToolchain
