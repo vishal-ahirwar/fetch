@@ -51,7 +51,7 @@ int main(int argc, char** argv) {
   if (argc < 3) {
     fmt::print(
         "Made by \033[32m{}\033[0m Version: \033[32m{}\033[0m,\n"
-        "How to : \033[32m{}\033[0m url outfilename",
+        "How to : \033[32m{}\033[0m url outfilename\n",
         Project::COMPANY_NAME, Project::VERSION_STRING, Project::PROJECT_NAME);
     return 0;
   };
