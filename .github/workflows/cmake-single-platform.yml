@@ -36,7 +36,7 @@ jobs:
         
     - name: Make binary executable (Linux/macOS)
       if: matrix.os != 'windows-latest'
-      run: chmod +x build/fetch/fetch
+      run: chmod +x .build/Release/fetch/fetch
       
     - name: Get latest tag
       id: get_tag
